@@ -10,11 +10,92 @@ function getAdminSupabase() {
   return createAdminClient(url, serviceKey);
 }
 
+function classifyIntent(query: string, hasAttachment: boolean, forceIntent?: string): 'SAVE' | 'ASK' {
+  if (forceIntent === 'SAVE' || forceIntent === 'ASK') {
+    return forceIntent as 'SAVE' | 'ASK';
+  }
+  if (hasAttachment) {
+    return 'SAVE';
+  }
+
+  const clean = query.trim();
+  const lower = clean.toLowerCase();
+
+  // Explicit Save Commands
+  const explicitSavePrefixes = [
+    'save ', 'save:', 'remember ', 'remember:', 'store ', 'store:',
+    'note:', 'idea:', 'thought:', 'keep this:', 'save this:'
+  ];
+  if (explicitSavePrefixes.some(prefix => lower.startsWith(prefix))) {
+    return 'SAVE';
+  }
+
+  // Explicit Retrieval Questions & Question Markers
+  if (lower.includes('?')) {
+    return 'ASK';
+  }
+
+  const retrievalLeadWords = [
+    'what', 'which', 'who', 'when', 'where', 'why', 'how',
+    'show', 'find', 'search', 'get', 'list', 'display', 'fetch', 'tell me',
+    'give me', 'bring up', 'look up', 'do we', 'did we', 'have we', 'has anyone',
+    'are there', 'is there', 'can you', 'could you', 'would you', 'recall', 'browse'
+  ];
+
+  if (retrievalLeadWords.some(w => lower.startsWith(w) || lower.includes(` ${w} `))) {
+    return 'ASK';
+  }
+
+  const retrievalKeywords = [
+    'saved', 'stored', 'decided', 'know about', 'have about', 'anything about',
+    'everything about', 'details on', 'info on', 'information on', 'till now',
+    'so far', 'history', 'yesterday', 'today', 'last week', 'recently'
+  ];
+
+  if (retrievalKeywords.some(kw => lower.includes(kw))) {
+    return 'ASK';
+  }
+
+  // Noun / Category Searches (e.g. "images", "website link", "links", "files", "documents")
+  const categoryTerms = [
+    'image', 'images', 'photo', 'photos', 'picture', 'pictures',
+    'link', 'links', 'url', 'urls', 'website', 'websites',
+    'file', 'files', 'document', 'documents', 'pdf', 'pdfs',
+    'note', 'notes', 'memory', 'memories'
+  ];
+
+  const words = lower.split(/\s+/);
+  if (words.length <= 4 && words.some(w => categoryTerms.includes(w))) {
+    return 'ASK';
+  }
+
+  // Declarative Statements that convey new facts/decisions to remember
+  const isDeclarativeSave =
+    lower.includes(' should ') ||
+    lower.includes(' uses ') ||
+    lower.includes(' is ') ||
+    lower.includes(' are ') ||
+    lower.includes(' will ') ||
+    lower.startsWith('we ') ||
+    lower.startsWith('our ');
+
+  if (isDeclarativeSave) {
+    return 'SAVE';
+  }
+
+  if (words.length <= 3) {
+    return 'ASK';
+  }
+
+  return 'SAVE';
+}
+
 function extractSearchKeywords(query: string): string[] {
   const stopWords = new Set([
     'what', 'when', 'where', 'who', 'why', 'how', 'which', 'did', 'do', 'does', 'we', 'i', 'you',
     'they', 'he', 'she', 'it', 'decide', 'decided', 'about', 'the', 'a', 'an', 'is', 'are', 'was',
-    'were', 'supposed', 'to', 'use', 'tell', 'me', 'show', 'find', 'remember', 'say', 'said'
+    'were', 'supposed', 'to', 'use', 'tell', 'me', 'show', 'find', 'remember', 'say', 'said',
+    'images', 'image', 'links', 'link', 'files', 'file', 'photos', 'photo', 'saved', 'have'
   ]);
   const words = query.toLowerCase().replace(/[^\w\s#]/g, '').split(/\s+/);
   const keywords = words.filter(w => w.length > 1 && !stopWords.has(w));
@@ -53,7 +134,7 @@ export async function POST(request: Request) {
     const isValidUuid = (str?: string | null) =>
       str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-    // Secure space authorization resolution:
+    // Secure space authorization resolution
     let realSpaceId = spaceId;
 
     if (user) {
@@ -65,11 +146,10 @@ export async function POST(request: Request) {
       const authorizedSpaceIds = new Set(userMemberships?.map(sm => sm.space_id) || []);
 
       if (isValidUuid(realSpaceId) && authorizedSpaceIds.has(realSpaceId)) {
-        // spaceId provided by client is valid and authorized for user
+        // spaceId authorized
       } else if (userMemberships && userMemberships.length > 0) {
         realSpaceId = userMemberships[0].space_id;
       } else {
-        // Auto-join user to default vault space in Supabase
         const { data: defaultSpace } = await adminSupabase.from('spaces').select('id').limit(1).single();
         if (defaultSpace) {
           realSpaceId = defaultSpace.id;
@@ -87,14 +167,7 @@ export async function POST(request: Request) {
       if (defaultSpace) realSpaceId = defaultSpace.id;
     }
 
-    console.log('=== ASK MEMORY API TRACE ===');
-    console.log('User ID:', user?.id || 'ANONYMOUS/GUEST');
-    console.log('User Email:', user?.email || 'N/A');
-    console.log('Input spaceId:', spaceId);
-    console.log('Resolved realSpaceId:', realSpaceId);
-    console.log('Raw query:', cleanQuery);
-
-    // Resolve or create Conversation session in Supabase
+    // Resolve or create Conversation session
     let activeConvId = conversationId;
     if (user && isValidUuid(realSpaceId)) {
       if (!isValidUuid(activeConvId)) {
@@ -113,7 +186,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Insert user message into conversation_messages table
+    // Insert user message into conversation_messages (chat history UI only)
     if (user && isValidUuid(activeConvId) && isValidUuid(realSpaceId)) {
       await adminSupabase.from('conversation_messages').insert({
         conversation_id: activeConvId,
@@ -124,46 +197,17 @@ export async function POST(request: Request) {
       });
     }
 
-    // Detect Intent (SAVE vs ASK)
-    let intent: 'SAVE' | 'ASK' | 'AMBIGUOUS' = forceIntent || 'ASK';
+    // Classify intent accurately
+    const intent: 'SAVE' | 'ASK' = classifyIntent(cleanQuery, Boolean(memoryType && memoryType !== 'TEXT'), forceIntent);
 
-    if (!forceIntent) {
-      const lower = cleanQuery.toLowerCase();
-      const isQuestion =
-        lower.endsWith('?') ||
-        lower.startsWith('what') ||
-        lower.startsWith('when') ||
-        lower.startsWith('where') ||
-        lower.startsWith('who') ||
-        lower.startsWith('why') ||
-        lower.startsWith('how') ||
-        lower.startsWith('find') ||
-        lower.startsWith('search') ||
-        lower.startsWith('tell me') ||
-        lower.startsWith('show me') ||
-        lower.startsWith('did we') ||
-        lower.startsWith('do we');
+    console.log('=== ASK MEMORY API TRACE ===');
+    console.log('Query:', cleanQuery);
+    console.log('Detected Intent:', intent);
+    console.log('Space ID:', realSpaceId);
 
-      const isSaveKeyword =
-        lower.startsWith('save') ||
-        lower.startsWith('remember') ||
-        lower.startsWith('note:') ||
-        lower.startsWith('we should') ||
-        lower.startsWith('idea:') ||
-        lower.startsWith('thought:') ||
-        lower.includes('should build') ||
-        lower.includes('should launch');
-
-      if (isSaveKeyword && !isQuestion) {
-        intent = 'SAVE';
-      } else if (isQuestion) {
-        intent = 'ASK';
-      } else {
-        intent = 'SAVE';
-      }
-    }
-
-    // Handle SAVE Intent
+    // ----------------------------------------------------
+    // HANDLE SAVE INTENT (Create Permanent Memory)
+    // ----------------------------------------------------
     if (intent === 'SAVE') {
       let title: string | null = null;
       if (cleanQuery.length > 40) {
@@ -172,7 +216,7 @@ export async function POST(request: Request) {
 
       const tagMatches = cleanQuery.match(/#(\w+)/g);
       const autoTagNames: string[] = tagMatches ? tagMatches.map(t => t.replace('#', '')) : [];
-      
+
       if (cleanQuery.toLowerCase().includes('ulink')) autoTagNames.push('ulink');
       if (cleanQuery.toLowerCase().includes('idea') || cleanQuery.toLowerCase().includes('product')) autoTagNames.push('ideas');
       if (cleanQuery.toLowerCase().includes('school') || cleanQuery.toLowerCase().includes('class')) autoTagNames.push('school');
@@ -249,7 +293,7 @@ export async function POST(request: Request) {
           created_by: 'demo-user-1',
           title: title,
           content: cleanQuery,
-          type: 'TEXT',
+          type: memoryType || 'TEXT',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
           tags: autoTagNames.map((t, idx) => ({ id: 'tag-' + idx, space_id: 'demo-space', name: t })),
@@ -274,8 +318,6 @@ export async function POST(request: Request) {
           .eq('id', activeConvId);
       }
 
-      console.log('SAVE Intent Success:', savedMemory.id);
-
       return NextResponse.json({
         conversationId: activeConvId,
         intent: 'SAVE',
@@ -285,9 +327,13 @@ export async function POST(request: Request) {
       });
     }
 
-    // Handle ASK Intent (Retrieval & Gemini Q&A)
-    const keywords = extractSearchKeywords(cleanQuery);
-    console.log('Extracted search keywords:', keywords);
+    // ----------------------------------------------------
+    // HANDLE ASK INTENT (Retrieval & Q&A - ZERO MEMORY INSERTS)
+    // ----------------------------------------------------
+    const queryLower = cleanQuery.toLowerCase();
+    const isImageCategory = /\b(image|images|photo|photos|picture|pictures|png|jpg|jpeg)\b/i.test(queryLower);
+    const isLinkCategory = /\b(link|links|url|urls|website|websites|site|domain)\b/i.test(queryLower);
+    const isFileCategory = /\b(file|files|document|documents|pdf|pdfs|attachment|attachments)\b/i.test(queryLower);
 
     let memoryQuery = adminSupabase
       .from('memories')
@@ -298,39 +344,63 @@ export async function POST(request: Request) {
         memory_tags(tags(*))
       `)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (isValidUuid(realSpaceId)) {
       memoryQuery = memoryQuery.eq('space_id', realSpaceId);
     }
 
-    const { data: matchedMemories, error: queryErr } = await memoryQuery;
-    if (queryErr) {
-      console.error('Memories query error:', queryErr);
-    }
-
-    let candidateMemories: Memory[] = (matchedMemories as unknown as Memory[]) || [];
-    console.log('Supabase returned candidate memories count:', candidateMemories.length);
-
-    const formattedMemories: Memory[] = candidateMemories.map((m: any) => ({
+    const { data: matchedMemories } = await memoryQuery;
+    const formattedMemories: Memory[] = ((matchedMemories as unknown as Memory[]) || []).map((m: any) => ({
       ...m,
       tags: m.memory_tags ? m.memory_tags.map((mt: any) => mt.tags).filter(Boolean) : m.tags || [],
     }));
 
-    // Score memories by keyword relevance
-    const scoredMemories = formattedMemories
-      .map(m => ({ memory: m, score: scoreMemory(m, cleanQuery, keywords) }))
-      .filter(item => item.score > 0)
-      .sort((a, b) => b.score - a.score);
+    let candidateSources: Memory[] = [];
 
-    console.log('Scored candidate memories:', scoredMemories.map(s => ({
-      id: s.memory.id,
-      title: s.memory.title || s.memory.content.substring(0, 30),
-      score: s.score
-    })));
+    if (isImageCategory) {
+      candidateSources = formattedMemories.filter(m =>
+        m.type === 'IMAGE' || (m.attachments && m.attachments.some((a: any) => a.file_type?.startsWith('image/')))
+      );
+    } else if (isLinkCategory) {
+      candidateSources = formattedMemories.filter(m =>
+        m.type === 'LINK' || Boolean(m.metadata?.url)
+      );
+    } else if (isFileCategory) {
+      candidateSources = formattedMemories.filter(m =>
+        m.type === 'FILE' || (m.attachments && m.attachments.some((a: any) => !a.file_type?.startsWith('image/')))
+      );
+    } else {
+      const keywords = extractSearchKeywords(cleanQuery);
+      if (keywords.length > 0) {
+        candidateSources = formattedMemories
+          .map(m => ({ memory: m, score: scoreMemory(m, cleanQuery, keywords) }))
+          .filter(item => item.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .map(item => item.memory);
+      } else {
+        candidateSources = formattedMemories.slice(0, 10);
+      }
+    }
 
-    // If no keyword score > 0, return clean zero-match message
-    if (scoredMemories.length === 0) {
+    // Generate authorized temporary signed URLs for attachments on candidate sources
+    for (const mem of candidateSources) {
+      if (mem.attachments && mem.attachments.length > 0) {
+        for (const att of mem.attachments) {
+          if (att.file_path) {
+            const { data: signedData } = await adminSupabase.storage
+              .from('memory-files')
+              .createSignedUrl(att.file_path, 3600);
+            if (signedData?.signedUrl) {
+              att.public_url = signedData.signedUrl;
+            }
+          }
+        }
+      }
+    }
+
+    // Zero matching sources
+    if (candidateSources.length === 0) {
       const assistantContent = "I couldn't find anything relevant in our memories.";
       const assistantMeta = { intent: 'ASK', cited_sources: [] };
 
@@ -354,19 +424,27 @@ export async function POST(request: Request) {
       });
     }
 
-    const memoriesForAi = scoredMemories.map(s => s.memory);
+    let assistantContent = '';
+    let finalSources = candidateSources;
 
-    console.log('Memories passed to Gemini AI count:', memoriesForAi.length);
+    if (isImageCategory) {
+      assistantContent = `Found ${candidateSources.length} image memory(ies) in our global vault:`;
+      finalSources = candidateSources.slice(0, 10);
+    } else if (isLinkCategory) {
+      assistantContent = `Found ${candidateSources.length} link memory(ies) in our global vault:`;
+      finalSources = candidateSources.slice(0, 10);
+    } else if (isFileCategory) {
+      assistantContent = `Found ${candidateSources.length} file memory(ies) in our global vault:`;
+      finalSources = candidateSources.slice(0, 10);
+    } else {
+      const aiResult = await askMemoryWithGemini(cleanQuery, candidateSources);
+      assistantContent = aiResult.answer;
 
-    const aiResult = await askMemoryWithGemini(cleanQuery, memoriesForAi);
-    console.log('Gemini AI Answer:', aiResult.answer);
-    console.log('Gemini Cited Memory IDs:', aiResult.citedMemoryIds);
+      const citedSet = new Set(aiResult.citedMemoryIds);
+      const citedSources = candidateSources.filter(m => citedSet.has(m.id));
+      finalSources = citedSources.length > 0 ? citedSources : candidateSources.slice(0, 5);
+    }
 
-    const citedSet = new Set(aiResult.citedMemoryIds);
-    const sources = memoriesForAi.filter((m) => citedSet.has(m.id));
-    const finalSources = sources.length > 0 ? sources : scoredMemories.slice(0, 3).map(s => s.memory);
-
-    const assistantContent = aiResult.answer;
     const assistantMeta = { intent: 'ASK', cited_sources: finalSources };
 
     if (user && isValidUuid(activeConvId) && isValidUuid(realSpaceId)) {
@@ -383,8 +461,6 @@ export async function POST(request: Request) {
         .update({ updated_at: new Date().toISOString() })
         .eq('id', activeConvId);
     }
-
-    console.log('=== END ASK MEMORY API TRACE ===\n');
 
     return NextResponse.json({
       conversationId: activeConvId,
