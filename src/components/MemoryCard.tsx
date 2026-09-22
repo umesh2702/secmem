@@ -1,7 +1,60 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { FileText, Image as ImageIcon, Link as LinkIcon, Paperclip, ExternalLink, Download, Hash, Clock } from 'lucide-react';
-import { Memory } from '@/types/database';
+import { Memory, Attachment } from '@/types/database';
+import { createClient } from '@/lib/supabase/client';
+
+function CardAttachmentItem({ att, memoryType }: { att: Attachment; memoryType: string }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(att.public_url || null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    let isMounted = true;
+    if (att.file_path) {
+      supabase.storage
+        .from('memory-files')
+        .createSignedUrl(att.file_path, 3600)
+        .then(({ data }) => {
+          if (isMounted && data?.signedUrl) {
+            setSignedUrl(data.signedUrl);
+          }
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [att.file_path, att.public_url]);
+
+  const isImg = att.file_type?.startsWith('image/') || memoryType === 'IMAGE';
+
+  if (isImg && signedUrl) {
+    return (
+      <div className="relative w-24 h-24 rounded-xl bg-[#0B0C0E] border border-[#222630] overflow-hidden shrink-0">
+        <img src={signedUrl} alt={att.file_name} className="w-full h-full object-cover" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-1.5 rounded-xl bg-[#0B0C0E] border border-[#222630] flex items-center gap-2 text-xs text-slate-300">
+      <Paperclip className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+      <span className="truncate max-w-[150px]">{att.file_name}</span>
+      {signedUrl && (
+        <a
+          href={signedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          onClick={(e) => e.stopPropagation()}
+          className="p-1 text-slate-500 hover:text-white"
+        >
+          <Download className="w-3 h-3" />
+        </a>
+      )}
+    </div>
+  );
+}
 
 interface MemoryCardProps {
   memory: Memory;
@@ -97,35 +150,9 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
       {/* Attachments (Images / Files) */}
       {memory.attachments && memory.attachments.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-2">
-          {memory.attachments.map((att) => {
-            const isImg = att.file_type?.startsWith('image/') || memory.type === 'IMAGE';
-            if (isImg && att.public_url) {
-              return (
-                <div key={att.id} className="relative w-24 h-24 rounded-xl bg-[#0B0C0E] border border-[#222630] overflow-hidden">
-                  <img src={att.public_url} alt={att.file_name} className="w-full h-full object-cover" />
-                </div>
-              );
-            }
-            return (
-              <div
-                key={att.id}
-                className="px-3 py-1.5 rounded-xl bg-[#0B0C0E] border border-[#222630] flex items-center gap-2 text-xs text-slate-300"
-              >
-                <Paperclip className="w-3.5 h-3.5 text-purple-400" />
-                <span className="truncate max-w-[150px]">{att.file_name}</span>
-                {att.public_url && (
-                  <a
-                    href={att.public_url}
-                    download
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1 text-slate-500 hover:text-white"
-                  >
-                    <Download className="w-3 h-3" />
-                  </a>
-                )}
-              </div>
-            );
-          })}
+          {memory.attachments.map((att) => (
+            <CardAttachmentItem key={att.id} att={att} memoryType={memory.type} />
+          ))}
         </div>
       )}
 

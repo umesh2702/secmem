@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles, Send, Paperclip, Plus, CheckCircle2, ArrowUpRight, BookOpen, ShieldCheck, RefreshCw, Trash2 } from 'lucide-react';
 import { ChatMessage, Memory, Profile } from '@/types/database';
+import { createClient } from '@/lib/supabase/client';
 
 interface ChatVaultViewProps {
   spaceId: string | null;
@@ -108,22 +109,32 @@ export default function ChatVaultView({
     if (!text.trim() && !attachment) return;
 
     const userMessageText = text.trim();
+    const isImage = attachment ? attachment.type.startsWith('image/') : false;
+    const memoryType = attachment ? (isImage ? 'IMAGE' : 'FILE') : 'TEXT';
+
+    let queryToSend = userMessageText;
+    if (!queryToSend && attachment) {
+      queryToSend = isImage
+        ? `Remember the attached image: ${attachment.name}`
+        : `Remember the attached file: ${attachment.name}`;
+    }
+
     const userMsgId = 'user-msg-' + Date.now();
+    const GLOBAL_SPACE_ID = '6095b18e-bcc1-405d-9654-b046dc0f5d3e';
+    const activeSpaceId = spaceId || GLOBAL_SPACE_ID;
 
     const newUserMessage: ChatMessage = {
       id: userMsgId,
       conversation_id: activeConversationId || 'default',
-      space_id: spaceId || '',
+      space_id: activeSpaceId,
       sender_id: currentUser?.id,
       sender_type: 'user',
-      content: userMessageText || (attachment ? `Attached file: ${attachment.name}` : ''),
+      content: userMessageText || (attachment ? `Attached ${isImage ? 'image' : 'file'}: ${attachment.name}` : ''),
       created_at: new Date().toISOString(),
       author: currentUser || undefined,
     };
 
     setMessages((prev) => [...prev, newUserMessage]);
-    setInput('');
-    setAttachment(null);
     setLoading(true);
 
     try {
@@ -131,9 +142,11 @@ export default function ChatVaultView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: userMessageText,
-          spaceId: spaceId || '',
+          query: queryToSend,
+          spaceId: activeSpaceId,
           conversationId: activeConversationId || null,
+          forceIntent: attachment ? 'SAVE' : undefined,
+          memoryType,
         }),
       });
 
@@ -144,11 +157,51 @@ export default function ChatVaultView({
         onConversationCreated(data.conversationId);
       }
 
+      // Upload attachment to private memory-files bucket and record in attachments table
+      if (attachment && data.savedMemory) {
+        const supabase = createClient();
+        const filePath = `${activeSpaceId}/${data.savedMemory.id}/${Date.now()}_${attachment.name}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from('memory-files')
+          .upload(filePath, attachment);
+
+        if (uploadErr) {
+          throw new Error(`Failed to upload attachment: ${uploadErr.message}`);
+        }
+
+        const { data: attRecord, error: attErr } = await supabase
+          .from('attachments')
+          .insert({
+            memory_id: data.savedMemory.id,
+            file_name: attachment.name,
+            file_path: filePath,
+            file_type: attachment.type || 'application/octet-stream',
+            file_size: attachment.size,
+            public_url: null, // Keep bucket private
+          })
+          .select()
+          .single();
+
+        if (attErr) {
+          console.error('Failed to create attachment DB record:', attErr);
+          throw new Error(`Failed to save attachment metadata: ${attErr.message}`);
+        }
+
+        if (attRecord && data.savedMemory) {
+          data.savedMemory.attachments = [attRecord];
+        }
+      }
+
+      // ONLY reset input and attachment AFTER complete success
+      setInput('');
+      setAttachment(null);
+
       if (data.intent === 'SAVE' && data.savedMemory) {
         const systemMsg: ChatMessage = {
           id: 'asst-save-' + Date.now(),
           conversation_id: data.conversationId || activeConversationId || 'default',
-          space_id: spaceId || '',
+          space_id: activeSpaceId,
           sender_type: 'assistant',
           content: '✓ Saved to Our Memory',
           metadata: {
@@ -164,7 +217,7 @@ export default function ChatVaultView({
         const assistantMsg: ChatMessage = {
           id: 'asst-ask-' + Date.now(),
           conversation_id: data.conversationId || activeConversationId || 'default',
-          space_id: spaceId || '',
+          space_id: activeSpaceId,
           sender_type: 'assistant',
           content: data.answer || "I couldn't find anything relevant in our memories.",
           metadata: {
@@ -177,12 +230,13 @@ export default function ChatVaultView({
       }
     } catch (err: unknown) {
       console.error('Chat processing error:', err);
+      const usefulError = err instanceof Error ? err.message : 'Sorry, an error occurred while processing your request. Please try again.';
       const errorMsg: ChatMessage = {
         id: 'err-' + Date.now(),
         conversation_id: activeConversationId || 'default',
-        space_id: spaceId || '',
+        space_id: activeSpaceId,
         sender_type: 'assistant',
-        content: 'Sorry, an error occurred while processing your request. Please try again.',
+        content: `Error: ${usefulError}`,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMsg]);

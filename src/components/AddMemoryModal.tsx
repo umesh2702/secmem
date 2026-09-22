@@ -87,6 +87,13 @@ export default function AddMemoryModal({
       const targetUserId = user ? user.id : 'e05dcda3-09e1-4afd-a62c-3ceb30c5f09c';
 
       if (targetSpaceId && targetUserId) {
+        // Ensure space_members row exists for RLS authorization
+        await supabase.from('space_members').upsert({
+          space_id: targetSpaceId,
+          user_id: targetUserId,
+          role: 'member',
+        }, { onConflict: 'space_id,user_id' });
+
         // Insert into real Supabase DB
         const { data: memory, error: memoryErr } = await supabase
           .from('memories')
@@ -143,19 +150,21 @@ export default function AddMemoryModal({
               .from('memory-files')
               .upload(filePath, file);
 
-            if (!uploadErr) {
-              const { data: publicUrlData } = supabase.storage
-                .from('memory-files')
-                .getPublicUrl(filePath);
+            if (uploadErr) {
+              throw new Error(`Failed to upload ${file.name}: ${uploadErr.message}`);
+            }
 
-              await supabase.from('attachments').insert({
-                memory_id: memory.id,
-                file_name: file.name,
-                file_path: filePath,
-                file_type: file.type || 'application/octet-stream',
-                file_size: file.size,
-                public_url: publicUrlData?.publicUrl || null,
-              });
+            const { error: attErr } = await supabase.from('attachments').insert({
+              memory_id: memory.id,
+              file_name: file.name,
+              file_path: filePath,
+              file_type: file.type || 'application/octet-stream',
+              file_size: file.size,
+              public_url: null, // Bucket is private, use signed URLs for display
+            });
+
+            if (attErr) {
+              throw new Error(`Failed to save attachment info for ${file.name}: ${attErr.message}`);
             }
           }
         }

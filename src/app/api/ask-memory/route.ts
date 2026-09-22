@@ -38,7 +38,7 @@ function scoreMemory(memory: any, query: string, keywords: string[]): number {
 
 export async function POST(request: Request) {
   try {
-    const { query, spaceId, conversationId, forceIntent } = await request.json();
+    const { query, spaceId, conversationId, forceIntent, memoryType } = await request.json();
 
     if (!query || typeof query !== 'string' || !query.trim()) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
             created_by: creatorId,
             title: title,
             content: cleanQuery,
-            type: 'TEXT',
+            type: memoryType || 'TEXT',
             metadata: { saved_via: 'chat' },
           })
           .select(`
@@ -236,7 +236,7 @@ export async function POST(request: Request) {
             created_by: creatorId,
             title: title,
             content: cleanQuery,
-            type: 'TEXT',
+            type: memoryType || 'TEXT',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             tags: autoTagNames.map((t, idx) => ({ id: 'tag-' + idx, space_id: realSpaceId, name: t })),

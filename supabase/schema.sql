@@ -120,9 +120,11 @@ CREATE INDEX IF NOT EXISTS idx_conv_messages_conv ON public.conversation_message
 -- 3. FUNCTIONS & TRIGGERS
 -- ------------------------------------------
 
--- Auto-create Profile on Auth Signup
+-- Auto-create Profile and Global Space Membership on Auth Signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  global_space_id_const UUID := '6095b18e-bcc1-405d-9654-b046dc0f5d3e';
 BEGIN
   INSERT INTO public.profiles (id, email, full_name, avatar_url)
   VALUES (
@@ -134,6 +136,12 @@ BEGIN
   ON CONFLICT (id) DO UPDATE
   SET email = EXCLUDED.email,
       full_name = COALESCE(EXCLUDED.full_name, profiles.full_name);
+
+  -- Auto-join new user to the global memory vault space
+  INSERT INTO public.space_members (space_id, user_id, role)
+  VALUES (global_space_id_const, new.id, 'member')
+  ON CONFLICT (space_id, user_id) DO NOTHING;
+
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

@@ -1,9 +1,68 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Edit3, Trash2, Copy, Check, Download, ExternalLink, Calendar, User, Tag as TagIcon, Save } from 'lucide-react';
-import { Memory } from '@/types/database';
+import { X, Edit3, Trash2, Copy, Check, Download, ExternalLink, Calendar, User, Tag as TagIcon, Save, Paperclip } from 'lucide-react';
+import { Memory, Attachment } from '@/types/database';
 import { createClient } from '@/lib/supabase/client';
+
+function MemoryAttachmentItem({ att, memoryType }: { att: Attachment; memoryType: string }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(att.public_url || null);
+  const supabase = createClient();
+
+  useEffect(() => {
+    let isMounted = true;
+    if (att.file_path) {
+      supabase.storage
+        .from('memory-files')
+        .createSignedUrl(att.file_path, 3600)
+        .then(({ data }) => {
+          if (isMounted && data?.signedUrl) {
+            setSignedUrl(data.signedUrl);
+          }
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [att.file_path, att.public_url]);
+
+  const isImg = att.file_type?.startsWith('image/') || memoryType === 'IMAGE';
+  const downloadUrl = signedUrl || undefined;
+
+  if (isImg && signedUrl) {
+    return (
+      <div className="rounded-xl bg-[#0B0C0E] border border-[#222630] overflow-hidden">
+        <img src={signedUrl} alt={att.file_name} className="w-full max-h-60 object-contain" />
+        <div className="p-2 flex items-center justify-between bg-[#14161B] text-[10px] text-slate-400">
+          <span className="truncate">{att.file_name}</span>
+          <a href={downloadUrl} target="_blank" rel="noopener noreferrer" download className="hover:text-white">
+            <Download className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 rounded-xl bg-[#0B0C0E] border border-[#222630] flex items-center justify-between gap-3 text-xs">
+      <div className="flex items-center gap-2 truncate">
+        <Paperclip className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+        <span className="truncate text-slate-200">{att.file_name}</span>
+      </div>
+      {downloadUrl && (
+        <a
+          href={downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          className="p-1 rounded bg-[#1c202a] text-[#C6FF00] hover:bg-[#252b38] shrink-0"
+        >
+          <Download className="w-4 h-4" />
+        </a>
+      )}
+    </div>
+  );
+}
 
 interface MemoryDetailModalProps {
   memory: Memory | null;
@@ -239,46 +298,9 @@ export default function MemoryDetailModal({
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold text-slate-400">Attachments & Files</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {memory.attachments.map((att) => {
-                      const isImg = att.file_type?.startsWith('image/') || memory.type === 'IMAGE';
-                      if (isImg && att.public_url) {
-                        return (
-                          <div
-                            key={att.id}
-                            className="rounded-xl bg-[#0B0C0E] border border-[#222630] overflow-hidden"
-                          >
-                            <img
-                              src={att.public_url}
-                              alt={att.file_name}
-                              className="w-full max-h-60 object-contain"
-                            />
-                            <div className="p-2 flex items-center justify-between bg-[#14161B] text-[10px] text-slate-400">
-                              <span className="truncate">{att.file_name}</span>
-                              <a href={att.public_url} download className="hover:text-white">
-                                <Download className="w-3.5 h-3.5" />
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div
-                          key={att.id}
-                          className="p-3 rounded-xl bg-[#0B0C0E] border border-[#222630] flex items-center justify-between gap-3 text-xs"
-                        >
-                          <span className="truncate text-slate-200">{att.file_name}</span>
-                          {att.public_url && (
-                            <a
-                              href={att.public_url}
-                              download
-                              className="p-1 rounded bg-[#1c202a] text-[#C6FF00] hover:bg-[#252b38]"
-                            >
-                              <Download className="w-4 h-4" />
-                            </a>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {memory.attachments.map((att) => (
+                      <MemoryAttachmentItem key={att.id} att={att} memoryType={memory.type} />
+                    ))}
                   </div>
                 </div>
               )}
