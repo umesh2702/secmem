@@ -35,28 +35,16 @@ export default function Header({
   return (
     <header className="sticky top-0 z-30 bg-[#0B0C0E]/90 backdrop-blur-md border-b border-[#222630] px-4 lg:px-8 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-        {/* Logo & Space Name */}
+        {/* Logo & Branding */}
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-[#C6FF00]/10 border border-[#C6FF00]/20 flex items-center justify-center text-[#C6FF00] font-black tracking-tighter">
             OM
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-extrabold text-white tracking-tight leading-none">
-                {currentSpace?.name || 'Our Shared Memory'}
-              </h1>
-              {currentSpace?.invite_code && (
-                <button
-                  onClick={copyInviteCode}
-                  title="Copy Invite Code for Partner"
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#14161B] border border-[#222630] hover:border-[#C6FF00]/40 text-[10px] text-slate-300 font-mono transition-colors"
-                >
-                  <span>{currentSpace.invite_code}</span>
-                  {copied ? <Check className="w-3 h-3 text-[#C6FF00]" /> : <Copy className="w-3 h-3 text-slate-500" />}
-                </button>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400 font-medium">Private Memory Vault</p>
+            <h1 className="text-base font-extrabold text-white tracking-tight leading-none">
+              Our Memory
+            </h1>
+            <p className="text-[11px] text-slate-400 font-medium">Shared Memory Vault</p>
           </div>
         </div>
 

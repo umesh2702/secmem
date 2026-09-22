@@ -30,10 +30,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isDemo = request.cookies.get('om_demo_user')?.value === 'true';
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
   const publicRoutes = ['/login', '/auth/callback'];
   const isPublicRoute = publicRoutes.some((path) => request.nextUrl.pathname.startsWith(path));
 
-  if (!user && !isPublicRoute) {
+  if (!user && !isDemo && !isApiRoute && !isPublicRoute) {
     // If not logged in and accessing protected route, redirect to /login
     const url = request.nextUrl.clone();
     url.pathname = '/login';

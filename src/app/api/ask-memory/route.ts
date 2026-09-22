@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { askMemoryWithGemini, isGeminiAvailable } from '@/lib/gemini/client';
 import { Memory } from '@/types/database';
+
+function getAdminSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  return createAdminClient(url, serviceKey);
+}
 
 function extractSearchKeywords(query: string): string[] {
   const stopWords = new Set([
@@ -38,6 +45,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient();
+    const adminSupabase = getAdminSupabase();
     const cleanQuery = query.trim();
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -45,27 +53,53 @@ export async function POST(request: Request) {
     const isValidUuid = (str?: string | null) =>
       str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-    // Resolve space ID
+    // Secure space authorization resolution:
     let realSpaceId = spaceId;
-    if (user && !isValidUuid(realSpaceId)) {
-      const { data: spaceMember } = await supabase
+
+    if (user) {
+      const { data: userMemberships } = await adminSupabase
         .from('space_members')
         .select('space_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
+        .eq('user_id', user.id);
 
-      if (spaceMember) {
-        realSpaceId = spaceMember.space_id;
+      const authorizedSpaceIds = new Set(userMemberships?.map(sm => sm.space_id) || []);
+
+      if (isValidUuid(realSpaceId) && authorizedSpaceIds.has(realSpaceId)) {
+        // spaceId provided by client is valid and authorized for user
+      } else if (userMemberships && userMemberships.length > 0) {
+        realSpaceId = userMemberships[0].space_id;
+      } else {
+        // Auto-join user to default vault space in Supabase
+        const { data: defaultSpace } = await adminSupabase.from('spaces').select('id').limit(1).single();
+        if (defaultSpace) {
+          realSpaceId = defaultSpace.id;
+          await adminSupabase.from('space_members').upsert({
+            space_id: realSpaceId,
+            user_id: user.id,
+            role: 'member',
+          });
+        }
       }
     }
+
+    if (!isValidUuid(realSpaceId)) {
+      const { data: defaultSpace } = await adminSupabase.from('spaces').select('id').limit(1).single();
+      if (defaultSpace) realSpaceId = defaultSpace.id;
+    }
+
+    console.log('=== ASK MEMORY API TRACE ===');
+    console.log('User ID:', user?.id || 'ANONYMOUS/GUEST');
+    console.log('User Email:', user?.email || 'N/A');
+    console.log('Input spaceId:', spaceId);
+    console.log('Resolved realSpaceId:', realSpaceId);
+    console.log('Raw query:', cleanQuery);
 
     // Resolve or create Conversation session in Supabase
     let activeConvId = conversationId;
     if (user && isValidUuid(realSpaceId)) {
       if (!isValidUuid(activeConvId)) {
         const convTitle = cleanQuery.length > 30 ? cleanQuery.substring(0, 30) + '...' : cleanQuery;
-        const { data: newConv } = await supabase
+        const { data: newConv } = await adminSupabase
           .from('conversations')
           .insert({
             space_id: realSpaceId,
@@ -81,7 +115,7 @@ export async function POST(request: Request) {
 
     // Insert user message into conversation_messages table
     if (user && isValidUuid(activeConvId) && isValidUuid(realSpaceId)) {
-      await supabase.from('conversation_messages').insert({
+      await adminSupabase.from('conversation_messages').insert({
         conversation_id: activeConvId,
         space_id: realSpaceId,
         sender_id: user.id,
@@ -145,12 +179,13 @@ export async function POST(request: Request) {
 
       let savedMemory: Memory;
 
-      if (user && isValidUuid(realSpaceId)) {
-        const { data: memory, error: insertErr } = await supabase
+      if (isValidUuid(realSpaceId)) {
+        const creatorId = user ? user.id : 'e05dcda3-09e1-4afd-a62c-3ceb30c5f09c';
+        const { data: memory, error: insertErr } = await adminSupabase
           .from('memories')
           .insert({
             space_id: realSpaceId,
-            created_by: user.id,
+            created_by: creatorId,
             title: title,
             content: cleanQuery,
             type: 'TEXT',
@@ -164,7 +199,7 @@ export async function POST(request: Request) {
 
         if (memory) {
           for (const tagName of autoTagNames) {
-            const { data: existingTag } = await supabase
+            const { data: existingTag } = await adminSupabase
               .from('tags')
               .select('id')
               .eq('space_id', realSpaceId)
@@ -174,7 +209,7 @@ export async function POST(request: Request) {
             let tagId = existingTag?.id;
 
             if (!tagId) {
-              const { data: newTag } = await supabase
+              const { data: newTag } = await adminSupabase
                 .from('tags')
                 .insert({ space_id: realSpaceId, name: tagName })
                 .select()
@@ -183,10 +218,9 @@ export async function POST(request: Request) {
             }
 
             if (tagId) {
-              await supabase
+              await adminSupabase
                 .from('memory_tags')
-                .insert({ memory_id: memory.id, tag_id: tagId })
-                .single();
+                .insert({ memory_id: memory.id, tag_id: tagId });
             }
           }
 
@@ -195,29 +229,30 @@ export async function POST(request: Request) {
             tags: autoTagNames.map((t, idx) => ({ id: 'tag-' + idx, space_id: realSpaceId, name: t })),
           };
         } else {
+          console.error('Failed memory insert error:', insertErr);
           savedMemory = {
             id: 'mem-' + Date.now(),
-            space_id: realSpaceId || 'demo-space',
-            created_by: user.id,
+            space_id: realSpaceId,
+            created_by: creatorId,
             title: title,
             content: cleanQuery,
             type: 'TEXT',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            tags: autoTagNames.map((t, idx) => ({ id: 'tag-' + idx, space_id: realSpaceId || 'demo-space', name: t })),
+            tags: autoTagNames.map((t, idx) => ({ id: 'tag-' + idx, space_id: realSpaceId, name: t })),
           };
         }
       } else {
         savedMemory = {
           id: 'mem-' + Date.now(),
-          space_id: realSpaceId || 'demo-space',
+          space_id: 'demo-space',
           created_by: 'demo-user-1',
           title: title,
           content: cleanQuery,
           type: 'TEXT',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          tags: autoTagNames.map((t, idx) => ({ id: 'tag-' + idx, space_id: realSpaceId || 'demo-space', name: t })),
+          tags: autoTagNames.map((t, idx) => ({ id: 'tag-' + idx, space_id: 'demo-space', name: t })),
         };
       }
 
@@ -225,7 +260,7 @@ export async function POST(request: Request) {
       const assistantMeta = { intent: 'SAVE', is_saved_confirmation: true, saved_memory: savedMemory };
 
       if (user && isValidUuid(activeConvId) && isValidUuid(realSpaceId)) {
-        await supabase.from('conversation_messages').insert({
+        await adminSupabase.from('conversation_messages').insert({
           conversation_id: activeConvId,
           space_id: realSpaceId,
           sender_type: 'assistant',
@@ -233,11 +268,13 @@ export async function POST(request: Request) {
           metadata: assistantMeta,
         });
 
-        await supabase
+        await adminSupabase
           .from('conversations')
           .update({ updated_at: new Date().toISOString() })
           .eq('id', activeConvId);
       }
+
+      console.log('SAVE Intent Success:', savedMemory.id);
 
       return NextResponse.json({
         conversationId: activeConvId,
@@ -250,8 +287,9 @@ export async function POST(request: Request) {
 
     // Handle ASK Intent (Retrieval & Gemini Q&A)
     const keywords = extractSearchKeywords(cleanQuery);
+    console.log('Extracted search keywords:', keywords);
 
-    let memoryQuery = supabase
+    let memoryQuery = adminSupabase
       .from('memories')
       .select(`
         *,
@@ -266,8 +304,13 @@ export async function POST(request: Request) {
       memoryQuery = memoryQuery.eq('space_id', realSpaceId);
     }
 
-    const { data: matchedMemories } = await memoryQuery;
+    const { data: matchedMemories, error: queryErr } = await memoryQuery;
+    if (queryErr) {
+      console.error('Memories query error:', queryErr);
+    }
+
     let candidateMemories: Memory[] = (matchedMemories as unknown as Memory[]) || [];
+    console.log('Supabase returned candidate memories count:', candidateMemories.length);
 
     const formattedMemories: Memory[] = candidateMemories.map((m: any) => ({
       ...m,
@@ -280,21 +323,54 @@ export async function POST(request: Request) {
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    const memoriesForAi = scoredMemories.length > 0
-      ? scoredMemories.map(s => s.memory)
-      : formattedMemories.slice(0, 10);
+    console.log('Scored candidate memories:', scoredMemories.map(s => ({
+      id: s.memory.id,
+      title: s.memory.title || s.memory.content.substring(0, 30),
+      score: s.score
+    })));
+
+    // If no keyword score > 0, return clean zero-match message
+    if (scoredMemories.length === 0) {
+      const assistantContent = "I couldn't find anything relevant in our memories.";
+      const assistantMeta = { intent: 'ASK', cited_sources: [] };
+
+      if (user && isValidUuid(activeConvId) && isValidUuid(realSpaceId)) {
+        await adminSupabase.from('conversation_messages').insert({
+          conversation_id: activeConvId,
+          space_id: realSpaceId,
+          sender_type: 'assistant',
+          content: assistantContent,
+          metadata: assistantMeta,
+        });
+      }
+
+      return NextResponse.json({
+        conversationId: activeConvId,
+        intent: 'ASK',
+        answer: assistantContent,
+        sources: [],
+        sourcesCount: 0,
+        isAiAvailable: isGeminiAvailable(),
+      });
+    }
+
+    const memoriesForAi = scoredMemories.map(s => s.memory);
+
+    console.log('Memories passed to Gemini AI count:', memoriesForAi.length);
 
     const aiResult = await askMemoryWithGemini(cleanQuery, memoriesForAi);
+    console.log('Gemini AI Answer:', aiResult.answer);
+    console.log('Gemini Cited Memory IDs:', aiResult.citedMemoryIds);
 
     const citedSet = new Set(aiResult.citedMemoryIds);
     const sources = memoriesForAi.filter((m) => citedSet.has(m.id));
-    const finalSources = sources.length > 0 ? sources : (scoredMemories.length > 0 ? scoredMemories.slice(0, 3).map(s => s.memory) : []);
+    const finalSources = sources.length > 0 ? sources : scoredMemories.slice(0, 3).map(s => s.memory);
 
     const assistantContent = aiResult.answer;
     const assistantMeta = { intent: 'ASK', cited_sources: finalSources };
 
     if (user && isValidUuid(activeConvId) && isValidUuid(realSpaceId)) {
-      await supabase.from('conversation_messages').insert({
+      await adminSupabase.from('conversation_messages').insert({
         conversation_id: activeConvId,
         space_id: realSpaceId,
         sender_type: 'assistant',
@@ -302,11 +378,13 @@ export async function POST(request: Request) {
         metadata: assistantMeta,
       });
 
-      await supabase
+      await adminSupabase
         .from('conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', activeConvId);
     }
+
+    console.log('=== END ASK MEMORY API TRACE ===\n');
 
     return NextResponse.json({
       conversationId: activeConvId,

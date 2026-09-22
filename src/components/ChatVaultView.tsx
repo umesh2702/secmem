@@ -54,7 +54,7 @@ export default function ChatVaultView({
         {
           id: 'welcome-1',
           conversation_id: 'default',
-          space_id: spaceId || 'demo-space',
+          space_id: spaceId || '',
           sender_type: 'assistant',
           content:
             'Welcome to Our Global Memory Vault. Type anything to remember it permanently, or ask a question to retrieve existing memories from our shared vault.',
@@ -113,7 +113,7 @@ export default function ChatVaultView({
     const newUserMessage: ChatMessage = {
       id: userMsgId,
       conversation_id: activeConversationId || 'default',
-      space_id: spaceId || 'demo-space',
+      space_id: spaceId || '',
       sender_id: currentUser?.id,
       sender_type: 'user',
       content: userMessageText || (attachment ? `Attached file: ${attachment.name}` : ''),
@@ -132,7 +132,7 @@ export default function ChatVaultView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: userMessageText,
-          spaceId: spaceId || 'demo-space-id',
+          spaceId: spaceId || '',
           conversationId: activeConversationId || null,
         }),
       });
@@ -148,7 +148,7 @@ export default function ChatVaultView({
         const systemMsg: ChatMessage = {
           id: 'asst-save-' + Date.now(),
           conversation_id: data.conversationId || activeConversationId || 'default',
-          space_id: spaceId || 'demo-space',
+          space_id: spaceId || '',
           sender_type: 'assistant',
           content: '✓ Saved to Our Memory',
           metadata: {
@@ -164,7 +164,7 @@ export default function ChatVaultView({
         const assistantMsg: ChatMessage = {
           id: 'asst-ask-' + Date.now(),
           conversation_id: data.conversationId || activeConversationId || 'default',
-          space_id: spaceId || 'demo-space',
+          space_id: spaceId || '',
           sender_type: 'assistant',
           content: data.answer || "I couldn't find anything relevant in our memories.",
           metadata: {
@@ -180,7 +180,7 @@ export default function ChatVaultView({
       const errorMsg: ChatMessage = {
         id: 'err-' + Date.now(),
         conversation_id: activeConversationId || 'default',
-        space_id: spaceId || 'demo-space',
+        space_id: spaceId || '',
         sender_type: 'assistant',
         content: 'Sorry, an error occurred while processing your request. Please try again.',
         created_at: new Date().toISOString(),
@@ -210,7 +210,7 @@ export default function ChatVaultView({
       {
         id: 'welcome-' + Date.now(),
         conversation_id: 'default',
-        space_id: spaceId || 'demo-space',
+        space_id: spaceId || '',
         sender_type: 'assistant',
         content:
           'New chat initialized. Type anything to remember it permanently in our shared vault, or ask a question to retrieve memories.',
