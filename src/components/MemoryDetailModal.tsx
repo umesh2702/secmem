@@ -31,9 +31,9 @@ function MemoryAttachmentItem({ att, memoryType }: { att: Attachment; memoryType
 
   if (isImg && signedUrl) {
     return (
-      <div className="rounded-xl bg-[#0B0C0E] border border-[#222630] overflow-hidden">
+      <div className="rounded-xl bg-[#0A0D14] border border-[#1E2536] overflow-hidden">
         <img src={signedUrl} alt={att.file_name} className="w-full max-h-60 object-contain" />
-        <div className="p-2 flex items-center justify-between bg-[#14161B] text-[10px] text-slate-400">
+        <div className="p-2 flex items-center justify-between bg-[#121620] text-[10px] text-slate-400">
           <span className="truncate">{att.file_name}</span>
           <a href={downloadUrl} target="_blank" rel="noopener noreferrer" download className="hover:text-white">
             <Download className="w-3.5 h-3.5" />
@@ -44,9 +44,9 @@ function MemoryAttachmentItem({ att, memoryType }: { att: Attachment; memoryType
   }
 
   return (
-    <div className="p-3 rounded-xl bg-[#0B0C0E] border border-[#222630] flex items-center justify-between gap-3 text-xs">
+    <div className="p-3 rounded-xl bg-[#0A0D14] border border-[#1E2536] flex items-center justify-between gap-3 text-xs">
       <div className="flex items-center gap-2 truncate">
-        <Paperclip className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+        <Paperclip className="w-3.5 h-3.5 text-[#C6FF00] shrink-0" />
         <span className="truncate text-slate-200">{att.file_name}</span>
       </div>
       {downloadUrl && (
@@ -55,7 +55,7 @@ function MemoryAttachmentItem({ att, memoryType }: { att: Attachment; memoryType
           target="_blank"
           rel="noopener noreferrer"
           download
-          className="p-1 rounded bg-[#1c202a] text-[#C6FF00] hover:bg-[#252b38] shrink-0"
+          className="p-1 rounded bg-[#182030] text-[#C6FF00] hover:bg-[#202B40] shrink-0"
         >
           <Download className="w-4 h-4" />
         </a>
@@ -96,6 +96,18 @@ export default function MemoryDetailModal({
     }
   }, [memory]);
 
+  // Handle Escape key press to close modal
+  useEffect(() => {
+    if (!memory) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [memory, onClose]);
+
   if (!memory) return null;
 
   const handleCopy = () => {
@@ -107,7 +119,6 @@ export default function MemoryDetailModal({
   const handleSaveEdit = async () => {
     setLoading(true);
     try {
-      // Update memory title & content
       await supabase
         .from('memories')
         .update({
@@ -149,17 +160,23 @@ export default function MemoryDetailModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#14161B] border border-[#222630] w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#0F131C] border border-[#1E2536] w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#222630] bg-[#0B0C0E]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E2536] bg-[#0A0D14]">
           <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-full bg-[#1c202a] border border-[#222630] flex items-center justify-center text-[10px] font-bold text-[#C6FF00]">
+            <div className="w-7 h-7 rounded-full bg-[#182030] border border-[#2B354C] flex items-center justify-center text-[10px] font-bold text-[#C6FF00]">
               {(memory.author?.full_name || 'Member').slice(0, 2).toUpperCase()}
             </div>
             <div>
               <p className="text-xs font-semibold text-white">{memory.author?.full_name || 'Member'}</p>
-              <p className="text-[10px] text-slate-500 font-mono">{formattedDate}</p>
+              <p className="text-[10px] text-slate-400 font-mono">{formattedDate}</p>
             </div>
           </div>
 
@@ -168,17 +185,17 @@ export default function MemoryDetailModal({
             <button
               onClick={handleCopy}
               title="Copy Content"
-              className="p-2 rounded-xl bg-[#14161B] border border-[#222630] hover:border-[#C6FF00]/40 text-slate-400 hover:text-white transition-colors"
+              className="p-2 rounded-xl bg-[#121620] border border-[#1E2536] hover:border-[#C6FF00]/40 text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               {copied ? <Check className="w-4 h-4 text-[#C6FF00]" /> : <Copy className="w-4 h-4" />}
             </button>
             <button
               onClick={() => setIsEditing(!isEditing)}
               title="Edit Memory"
-              className={`p-2 rounded-xl border transition-colors ${
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
                 isEditing
-                  ? 'bg-[#C6FF00]/10 border-[#C6FF00] text-[#C6FF00]'
-                  : 'bg-[#14161B] border-[#222630] text-slate-400 hover:text-white'
+                  ? 'bg-[#1A2608] border-[#C6FF00] text-[#C6FF00]'
+                  : 'bg-[#121620] border-[#1E2536] text-slate-400 hover:text-white'
               }`}
             >
               <Edit3 className="w-4 h-4" />
@@ -186,13 +203,14 @@ export default function MemoryDetailModal({
             <button
               onClick={() => setShowDeleteConfirm(true)}
               title="Delete Memory"
-              className="p-2 rounded-xl bg-[#14161B] hover:bg-rose-500/10 border border-[#222630] hover:border-rose-500/30 text-slate-400 hover:text-rose-400 transition-colors"
+              className="p-2 rounded-xl bg-[#121620] hover:bg-rose-500/10 border border-[#1E2536] hover:border-rose-500/30 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
             >
               <Trash2 className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-[#14161B] border border-[#222630] text-slate-400 hover:text-white transition-colors"
+              title="Close"
+              className="p-2 rounded-xl bg-[#121620] border border-[#1E2536] text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -209,13 +227,13 @@ export default function MemoryDetailModal({
                 <button
                   onClick={handleDelete}
                   disabled={loading}
-                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors cursor-pointer"
                 >
                   {loading ? 'Deleting...' : 'Yes, Delete Permanently'}
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="px-3 py-1.5 rounded-lg bg-[#14161B] border border-[#222630] text-slate-300 hover:text-white"
+                  className="px-3 py-1.5 rounded-lg bg-[#121620] border border-[#1E2536] text-slate-300 hover:text-white cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -232,7 +250,7 @@ export default function MemoryDetailModal({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-[#C6FF00]/50"
+                  className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-[#C6FF00]/50"
                 />
               </div>
               <div>
@@ -241,7 +259,7 @@ export default function MemoryDetailModal({
                   rows={6}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[#C6FF00]/50 resize-none"
+                  className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-[#C6FF00]/50 resize-none"
                 />
               </div>
               <div className="flex justify-end gap-2">
@@ -254,7 +272,7 @@ export default function MemoryDetailModal({
                 <button
                   onClick={handleSaveEdit}
                   disabled={loading}
-                  className="bg-[#C6FF00] hover:bg-[#b8ee00] text-black font-semibold rounded-xl px-4 py-2 text-xs flex items-center gap-1.5"
+                  className="bg-[#C6FF00] hover:bg-[#b5f800] text-black font-semibold rounded-xl px-4 py-2 text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>Save Changes</span>
@@ -268,8 +286,8 @@ export default function MemoryDetailModal({
                 <h2 className="text-xl font-bold text-white leading-tight">{memory.title}</h2>
               )}
 
-              {/* Exact Raw Memory Content */}
-              <div className="bg-[#0B0C0E] p-4 rounded-xl border border-[#222630]">
+              {/* Memory Content */}
+              <div className="bg-[#0A0D14] p-4 rounded-xl border border-[#1E2536]">
                 <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
                   {memory.content}
                 </p>
@@ -277,7 +295,7 @@ export default function MemoryDetailModal({
 
               {/* Link metadata view */}
               {memory.type === 'LINK' && memory.metadata?.url && (
-                <div className="p-4 rounded-xl bg-[#0B0C0E] border border-[#222630] flex items-center justify-between gap-4">
+                <div className="p-4 rounded-xl bg-[#0A0D14] border border-[#1E2536] flex items-center justify-between gap-4">
                   <div className="truncate">
                     <p className="text-xs text-slate-400 font-mono truncate">{memory.metadata.url}</p>
                   </div>
@@ -313,7 +331,7 @@ export default function MemoryDetailModal({
                     {memory.tags.map((t) => (
                       <span
                         key={t.id || t.name}
-                        className="px-2.5 py-1 rounded-lg bg-[#0B0C0E] border border-[#222630] text-xs font-mono text-slate-300"
+                        className="px-2.5 py-1 rounded-lg bg-[#0A0D14] border border-[#1E2536] text-xs font-mono text-slate-300"
                       >
                         #{t.name}
                       </span>
@@ -328,3 +346,4 @@ export default function MemoryDetailModal({
     </div>
   );
 }
+

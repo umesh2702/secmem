@@ -30,15 +30,15 @@ function CardAttachmentItem({ att, memoryType }: { att: Attachment; memoryType: 
 
   if (isImg && signedUrl) {
     return (
-      <div className="relative w-24 h-24 rounded-xl bg-[#0B0C0E] border border-[#222630] overflow-hidden shrink-0">
+      <div className="relative w-24 h-24 rounded-xl bg-[#0A0D14] border border-[#1E2536] overflow-hidden shrink-0">
         <img src={signedUrl} alt={att.file_name} className="w-full h-full object-cover" />
       </div>
     );
   }
 
   return (
-    <div className="px-3 py-1.5 rounded-xl bg-[#0B0C0E] border border-[#222630] flex items-center gap-2 text-xs text-slate-300">
-      <Paperclip className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+    <div className="px-3 py-1.5 rounded-xl bg-[#0A0D14] border border-[#1E2536] flex items-center gap-2 text-xs text-slate-300">
+      <Paperclip className="w-3.5 h-3.5 text-[#C6FF00] shrink-0" />
       <span className="truncate max-w-[150px]">{att.file_name}</span>
       {signedUrl && (
         <a
@@ -47,7 +47,7 @@ function CardAttachmentItem({ att, memoryType }: { att: Attachment; memoryType: 
           rel="noopener noreferrer"
           download
           onClick={(e) => e.stopPropagation()}
-          className="p-1 text-slate-500 hover:text-white"
+          className="p-1 text-slate-400 hover:text-white"
         >
           <Download className="w-3 h-3" />
         </a>
@@ -72,7 +72,7 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
       case 'FILE':
         return { label: 'File', icon: Paperclip, color: 'text-purple-400 bg-purple-400/10 border-purple-400/20' };
       default:
-        return { label: 'Note', icon: FileText, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' };
+        return { label: 'Note', icon: FileText, color: 'text-[#C6FF00] bg-[#1A2608] border-[#C6FF00]/40' };
     }
   };
 
@@ -90,13 +90,12 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
   return (
     <div
       onClick={() => onSelect(memory)}
-      className="group bg-[#14161B] hover:bg-[#181a20] border border-[#222630] hover:border-[#C6FF00]/30 rounded-2xl p-5 transition-all cursor-pointer shadow-md flex flex-col gap-3 relative"
+      className="group bg-[#0F131C] hover:bg-[#121620] border border-[#1E2536] hover:border-[#C6FF00]/40 rounded-2xl p-5 transition-all cursor-pointer shadow-md flex flex-col gap-3 relative"
     >
-      {/* Top Meta Bar: Author, Time, Type Badge */}
+      {/* Top Meta Bar */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {/* Author avatar */}
-          <div className="w-6 h-6 rounded-full bg-[#1c202a] border border-[#222630] flex items-center justify-center text-[9px] font-extrabold text-[#C6FF00] overflow-hidden">
+          <div className="w-6 h-6 rounded-full bg-[#182030] border border-[#2B354C] flex items-center justify-center text-[9px] font-extrabold text-[#C6FF00] overflow-hidden">
             {memory.author?.avatar_url ? (
               <img src={memory.author.avatar_url} alt="Author" className="w-full h-full object-cover" />
             ) : (
@@ -105,28 +104,28 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
           </div>
           <span className="text-xs font-semibold text-slate-300">{authorName}</span>
           <span className="text-slate-600 text-xs">•</span>
-          <span className="text-[11px] text-slate-500 font-mono flex items-center gap-1">
-            <Clock className="w-3 h-3 text-slate-600" />
+          <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+            <Clock className="w-3 h-3 text-slate-500" />
             <span>{formattedTime}</span>
           </span>
         </div>
 
         {/* Type Badge */}
-        <div className={`px-2 py-0.5 rounded-lg border text-[10px] font-semibold flex items-center gap-1 ${badge.color}`}>
+        <div className={`px-2 py-0.5 rounded-full border text-[10px] font-bold flex items-center gap-1 ${badge.color}`}>
           <Icon className="w-3 h-3" />
           <span>{badge.label}</span>
         </div>
       </div>
 
-      {/* Memory Title (Optional) */}
+      {/* Title */}
       {memory.title && (
         <h3 className="text-sm font-bold text-white group-hover:text-[#C6FF00] transition-colors leading-snug">
           {memory.title}
         </h3>
       )}
 
-      {/* Raw Original Content */}
-      <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap line-clamp-4">
+      {/* Content */}
+      <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap line-clamp-4 font-normal">
         {memory.content}
       </p>
 
@@ -137,7 +136,7 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="p-3 rounded-xl bg-[#0B0C0E] border border-[#222630] hover:border-[#C6FF00]/40 flex items-center justify-between gap-3 text-xs transition-colors"
+          className="p-3 rounded-xl bg-[#0A0D14] border border-[#1E2536] hover:border-[#C6FF00]/40 flex items-center justify-between gap-3 text-xs transition-colors"
         >
           <div className="flex items-center gap-2 truncate">
             <LinkIcon className="w-4 h-4 text-amber-400 shrink-0" />
@@ -147,7 +146,7 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
         </a>
       )}
 
-      {/* Attachments (Images / Files) */}
+      {/* Attachments */}
       {memory.attachments && memory.attachments.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-2">
           {memory.attachments.map((att) => (
@@ -166,7 +165,7 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
                 e.stopPropagation();
                 if (onSelectTag) onSelectTag(tag.name);
               }}
-              className="px-2 py-0.5 rounded-md bg-[#0B0C0E] border border-[#222630] hover:border-[#C6FF00]/40 text-[10px] text-slate-400 hover:text-[#C6FF00] font-mono flex items-center gap-0.5 transition-colors"
+              className="px-2.5 py-0.5 rounded-full bg-[#0A0D14] border border-[#1E2536] hover:border-[#C6FF00]/50 text-[10px] text-slate-400 hover:text-[#C6FF00] font-mono flex items-center gap-1 transition-colors"
             >
               <Hash className="w-2.5 h-2.5 text-slate-500" />
               <span>{tag.name}</span>
@@ -177,3 +176,4 @@ export default function MemoryCard({ memory, onSelect, onSelectTag }: MemoryCard
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Type, Image as ImageIcon, Link as LinkIcon, Paperclip, Plus, Sparkles, Hash } from 'lucide-react';
 import { MemoryType } from '@/types/database';
 import { createClient } from '@/lib/supabase/client';
@@ -29,6 +29,17 @@ export default function AddMemoryModal({
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -72,7 +83,6 @@ export default function AddMemoryModal({
         finalContent = files.map((f) => f.name).join(', ');
       }
 
-      // Check for real auth user
       const { data: { user } } = await supabase.auth.getUser();
 
       const isValidUuid = (str?: string | null) =>
@@ -87,14 +97,12 @@ export default function AddMemoryModal({
       const targetUserId = user ? user.id : 'e05dcda3-09e1-4afd-a62c-3ceb30c5f09c';
 
       if (targetSpaceId && targetUserId) {
-        // Ensure space_members row exists for RLS authorization
         await supabase.from('space_members').upsert({
           space_id: targetSpaceId,
           user_id: targetUserId,
           role: 'member',
         }, { onConflict: 'space_id,user_id' });
 
-        // Insert into real Supabase DB
         const { data: memory, error: memoryErr } = await supabase
           .from('memories')
           .insert({
@@ -112,7 +120,6 @@ export default function AddMemoryModal({
           throw new Error(memoryErr.message || memoryErr.details || 'Failed to insert memory into Supabase');
         }
 
-        // Process tag names
         if (tagInput.trim()) {
           const tagNames = tagInput.trim().split(/\s+/).map(t => t.replace('#', ''));
           for (const tagName of tagNames) {
@@ -142,7 +149,6 @@ export default function AddMemoryModal({
           }
         }
 
-        // Upload attachments
         if (files.length > 0 && memory) {
           for (const file of files) {
             const filePath = `${targetSpaceId}/${memory.id}/${Date.now()}_${file.name}`;
@@ -160,7 +166,7 @@ export default function AddMemoryModal({
               file_path: filePath,
               file_type: file.type || 'application/octet-stream',
               file_size: file.size,
-              public_url: null, // Bucket is private, use signed URLs for display
+              public_url: null,
             });
 
             if (attErr) {
@@ -170,7 +176,6 @@ export default function AddMemoryModal({
         }
       }
 
-      // Reset form
       setTitle('');
       setContent('');
       setUrl('');
@@ -187,24 +192,31 @@ export default function AddMemoryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#14161B] border border-[#222630] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#0F131C] border border-[#1E2536] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#222630]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1E2536] bg-[#0A0D14]">
           <div className="flex items-center gap-2 text-white font-bold text-base">
             <Plus className="w-5 h-5 text-[#C6FF00]" />
             <span>Add Memory</span>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#222630] transition-colors"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#182030] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-4 gap-1 p-3 bg-[#0B0C0E] border-b border-[#222630]">
+        <div className="grid grid-cols-4 gap-1 p-3 bg-[#0A0D14] border-b border-[#1E2536]">
           {[
             { type: 'TEXT' as MemoryType, label: 'Text', icon: Type },
             { type: 'IMAGE' as MemoryType, label: 'Image', icon: ImageIcon },
@@ -218,9 +230,9 @@ export default function AddMemoryModal({
                 key={tab.type}
                 type="button"
                 onClick={() => setActiveTab(tab.type)}
-                className={`py-2 px-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                className={`py-2 px-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-[#14161B] text-[#C6FF00] border border-[#222630] shadow-sm'
+                    ? 'bg-[#121620] text-[#C6FF00] border border-[#1E2536] shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -249,7 +261,7 @@ export default function AddMemoryModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Give this memory a name..."
-              className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#C6FF00]/50"
+              className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#C6FF00]/50"
             />
           </div>
 
@@ -265,7 +277,7 @@ export default function AddMemoryModal({
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Write your note, idea, memory, or summary here..."
-                className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#C6FF00]/50 resize-none"
+                className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#C6FF00]/50 resize-none"
               />
             </div>
           )}
@@ -282,7 +294,7 @@ export default function AddMemoryModal({
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://example.com/article"
-                  className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#C6FF00]/50"
+                  className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#C6FF00]/50"
                 />
               </div>
               <div>
@@ -294,7 +306,7 @@ export default function AddMemoryModal({
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Why did you save this link?..."
-                  className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#C6FF00]/50 resize-none"
+                  className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#C6FF00]/50 resize-none"
                 />
               </div>
             </div>
@@ -311,7 +323,7 @@ export default function AddMemoryModal({
                   multiple={activeTab === 'IMAGE'}
                   accept={activeTab === 'IMAGE' ? 'image/*' : '*'}
                   onChange={handleFileChange}
-                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#1c202a] file:text-[#C6FF00] hover:file:bg-[#252b38] file:cursor-pointer"
+                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#182030] file:text-[#C6FF00] hover:file:bg-[#202B40] file:cursor-pointer"
                 />
               </div>
               <div>
@@ -323,7 +335,7 @@ export default function AddMemoryModal({
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Add notes or description for these attachments..."
-                  className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#C6FF00]/50 resize-none"
+                  className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl px-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#C6FF00]/50 resize-none"
                 />
               </div>
             </div>
@@ -341,24 +353,24 @@ export default function AddMemoryModal({
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 placeholder="ideas business product ulink"
-                className="w-full bg-[#0B0C0E] border border-[#222630] rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#C6FF00]/50"
+                className="w-full bg-[#0A0D14] border border-[#1E2536] rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#C6FF00]/50"
               />
             </div>
           </div>
 
           {/* Footer actions */}
-          <div className="pt-3 border-t border-[#222630] flex items-center justify-end gap-2">
+          <div className="pt-3 border-t border-[#1E2536] flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-[#222630] transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-[#182030] transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="bg-[#C6FF00] hover:bg-[#b8ee00] text-black font-semibold rounded-xl px-5 py-2 text-xs transition-colors shadow-md shadow-[#C6FF00]/10 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+              className="bg-[#C6FF00] hover:bg-[#b5f800] text-black font-semibold rounded-xl px-5 py-2 text-xs transition-colors shadow-md shadow-[#C6FF00]/10 disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
             >
               {loading ? (
                 <span>Saving memory...</span>
@@ -375,3 +387,4 @@ export default function AddMemoryModal({
     </div>
   );
 }
+

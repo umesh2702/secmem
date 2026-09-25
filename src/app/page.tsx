@@ -92,7 +92,6 @@ export default function DashboardPage() {
         };
         setCurrentUser(activeProfile);
 
-        // Auto-join user to global space in space_members if not present
         await supabase.from('space_members').upsert({
           space_id: GLOBAL_SPACE_ID,
           user_id: user.id,
@@ -109,7 +108,6 @@ export default function DashboardPage() {
       };
       setCurrentSpace(targetSpace);
 
-      // Fetch space members
       const { data: spaceMem } = await supabase
         .from('space_members')
         .select('profiles(*)')
@@ -119,11 +117,9 @@ export default function DashboardPage() {
         setMembers(spaceMem.map((sm: any) => sm.profiles).filter(Boolean));
       }
 
-      // Fetch tags
       const { data: tagList } = await supabase.from('tags').select('*').eq('space_id', GLOBAL_SPACE_ID);
       if (tagList) setTags(tagList);
 
-      // Fetch memories from Supabase Postgres
       const { data: memList } = await supabase
         .from('memories')
         .select(`
@@ -141,34 +137,7 @@ export default function DashboardPage() {
           tags: m.memory_tags ? m.memory_tags.map((mt: any) => mt.tags).filter(Boolean) : [],
         }));
         setMemories(formatted);
-      } else {
-          // Seed ULink memory into Supabase if DB is completely empty for this space
-          const creatorId = activeProfile?.id || 'e05dcda3-09e1-4afd-a62c-3ceb30c5f09c';
-          const { data: seedMem } = await supabase
-            .from('memories')
-            .insert({
-              space_id: targetSpace.id,
-              created_by: creatorId,
-              title: 'ULink Restaurant NFC Concept',
-              content:
-                'We should launch ULink before December. What if restaurants had a small NFC display at checkout so customers could tap to leave feedback or get digital menus?',
-              type: 'TEXT',
-            })
-            .select(`
-              *,
-              author:profiles(id, full_name, avatar_url, email)
-            `)
-            .single();
-
-          if (seedMem) {
-            setMemories([
-              {
-                ...seedMem,
-                tags: [{ id: 't1', space_id: targetSpace.id, name: 'ulink' }, { id: 't2', space_id: targetSpace.id, name: 'ideas' }],
-              },
-            ]);
-          }
-        }
+      }
     } catch (err) {
       console.warn('Data initialization error:', err);
     } finally {
@@ -216,8 +185,8 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#0B0C0E] text-slate-100 flex flex-col font-sans">
-      {/* Header */}
+    <div className="h-screen w-screen bg-[#090B10] text-slate-100 flex flex-col font-sans overflow-hidden">
+      {/* Fixed Header */}
       <Header
         currentSpace={currentSpace}
         members={members}
@@ -228,9 +197,9 @@ export default function DashboardPage() {
         onLogout={handleLogout}
       />
 
-      {/* Main Layout Area */}
-      <div className="flex flex-1 max-w-7xl w-full mx-auto pb-16 lg:pb-0">
-        {/* Navigation Sidebar */}
+      {/* Main App Shell Layout (Fixed Sidebar + Dynamic Scrollable Content) */}
+      <div className="flex flex-1 min-h-0 w-full max-w-[1600px] mx-auto overflow-hidden">
+        {/* Fixed Navigation Sidebar */}
         <Sidebar
           spaceId={currentSpace?.id || null}
           activeNav={activeNav}
@@ -242,11 +211,17 @@ export default function DashboardPage() {
           onSelectTag={setSelectedTag}
         />
 
-        {/* Main View Area */}
-        <main className="flex-1 p-4 lg:p-6 space-y-6 max-w-4xl mx-auto w-full">
-          {/* Active Search / Tag Banner */}
+        {/* Scrollable Main View Container */}
+        <main
+          className={`flex-1 h-full min-h-0 w-full max-w-6xl mx-auto p-4 lg:p-6 flex flex-col ${
+            activeNav === 'chat' || activeNav === 'history'
+              ? 'overflow-hidden'
+              : 'overflow-y-auto custom-scrollbar space-y-6'
+          }`}
+        >
+          {/* Active Search / Tag Filter Banner */}
           {(searchQuery || selectedTag) && (
-            <div className="flex items-center justify-between p-3 rounded-xl bg-[#C6FF00]/10 border border-[#C6FF00]/30 text-xs text-[#C6FF00]">
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-[#1A2608]/40 border border-[#C6FF00]/40 text-xs text-[#C6FF00] shrink-0">
               <span>
                 {searchQuery ? `Global Search: "${searchQuery}"` : `Filtering by Tag: #${selectedTag}`}
               </span>
@@ -255,16 +230,16 @@ export default function DashboardPage() {
                   setSearchQuery('');
                   setSelectedTag(null);
                 }}
-                className="text-slate-400 hover:text-white underline font-medium"
+                className="text-slate-400 hover:text-white underline font-semibold cursor-pointer"
               >
-                Clear Search
+                Clear Filter
               </button>
             </div>
           )}
 
-          {/* Primary View Router */}
+          {/* View Router */}
           {loading ? (
-            <div className="py-20 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+            <div className="py-24 text-center text-slate-400 text-xs flex items-center justify-center gap-2 flex-1">
               <RefreshCw className="w-4 h-4 animate-spin text-[#C6FF00]" />
               <span>Connecting to memory vault...</span>
             </div>
@@ -279,15 +254,17 @@ export default function DashboardPage() {
               onOpenAddModal={() => setIsAddModalOpen(true)}
             />
           ) : activeNav === 'chat' || activeNav === 'history' ? (
-            <ChatVaultView
-              spaceId={currentSpace?.id || null}
-              currentUser={currentUser}
-              activeConversationId={activeConversationId}
-              onConversationCreated={(convId) => setActiveConversationId(convId)}
-              onSelectMemory={(m) => setSelectedMemory(m)}
-              onMemoryCreated={() => refreshMemoriesSilently()}
-              onOpenAddModal={() => setIsAddModalOpen(true)}
-            />
+            <div className="flex-1 min-h-0 h-full w-full">
+              <ChatVaultView
+                spaceId={currentSpace?.id || null}
+                currentUser={currentUser}
+                activeConversationId={activeConversationId}
+                onConversationCreated={(convId) => setActiveConversationId(convId)}
+                onSelectMemory={(m) => setSelectedMemory(m)}
+                onMemoryCreated={() => refreshMemoriesSilently()}
+                onOpenAddModal={() => setIsAddModalOpen(true)}
+              />
+            </div>
           ) : activeNav === 'themes' ? (
             <ThemesView
               memories={memories}
@@ -326,3 +303,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
